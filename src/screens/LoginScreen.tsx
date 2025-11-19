@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   SafeAreaView,
   StatusBar,
@@ -135,4 +135,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

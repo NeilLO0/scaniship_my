@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+﻿import React, { useMemo, useRef, useState } from 'react';
 import {
   SafeAreaView,
   StatusBar,
@@ -8,6 +8,7 @@ import {
   Pressable,
   Modal,
   Dimensions,
+  TextInput,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors, radius, spacing, typography } from '../theme';
@@ -15,11 +16,15 @@ import { colors, radius, spacing, typography } from '../theme';
 type Props = {
   userId: string;
   onLogout: () => void;
+  onStartScan?: (args: { mode: 'IN' | 'OUT'; warehouseId: string; orderNo?: string }) => void;
+  onOpenHistory?: () => void;
+  onOpenSettings?: () => void;
 };
 
-export default function MainScreen({ userId, onLogout }: Props) {
+export default function MainScreen({ userId, onLogout, onStartScan, onOpenHistory, onOpenSettings }: Props) {
   const [wh, setWh] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [orderNo, setOrderNo] = useState<string>('');
 
   const whOptions = useMemo(
     () => [
@@ -78,7 +83,22 @@ export default function MainScreen({ userId, onLogout }: Props) {
             />
           </View>
 
-          <Pressable style={styles.primaryBtn}>
+          <View style={{ marginTop: spacing.lg }}>
+            <Text style={styles.label}>訂單編號 *</Text>
+            <TextInput
+              value={orderNo}
+              onChangeText={setOrderNo}
+              placeholder="請輸入訂單編號"
+              placeholderTextColor={colors.placeholder}
+              style={styles.input}
+            />
+          </View>
+
+          <Pressable style={styles.primaryBtn} onPress={() => {
+            if (wh && status && onStartScan) {
+              onStartScan({ mode: status === 'IN' ? 'IN' : 'OUT', warehouseId: wh, orderNo });
+            }
+          }}>
             <Ionicons
               name="scan-outline"
               size={18}
@@ -90,12 +110,12 @@ export default function MainScreen({ userId, onLogout }: Props) {
         </View>
 
         <View style={styles.quickRow}>
-          <Pressable style={styles.quickTile}>
+          <Pressable style={styles.quickTile} onPress={onOpenHistory}>
             <Ionicons name="time-outline" size={20} color={colors.text} />
             <Text style={styles.quickLabel}>掃描歷史</Text>
           </Pressable>
 
-          <Pressable style={styles.quickTile}>
+          <Pressable style={styles.quickTile} onPress={onOpenSettings}>
             <Ionicons name="settings-outline" size={20} color={colors.text} />
             <Text style={styles.quickLabel}>系統設定</Text>
           </Pressable>
@@ -135,6 +155,15 @@ const styles = StyleSheet.create({
   cardSub: { marginTop: 4, color: colors.mutedText, fontSize: typography.body },
   label: { color: colors.text, fontSize: typography.label, marginBottom: spacing.sm },
   placeholder: { color: colors.placeholder, fontSize: typography.body },
+  input: {
+    backgroundColor: colors.inputBg,
+    borderRadius: radius.md,
+    height: 48,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    fontSize: typography.body,
+  },
   primaryBtn: {
     marginTop: spacing.xl,
     height: 48,
@@ -188,7 +217,7 @@ function Select({ value, onChange, placeholder, options }: SelectProps) {
         <Text style={[selectStyles.valueText, !label && { color: colors.placeholder }]}>
           {label || placeholder}
         </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.mutedText} />
+        <Ionicons name="chevron-down-outline" size={18} color={colors.mutedText} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -250,4 +279,3 @@ const selectStyles = StyleSheet.create({
   itemPressed: { backgroundColor: '#EEF2FF' },
   itemText: { color: colors.text },
 });
-
