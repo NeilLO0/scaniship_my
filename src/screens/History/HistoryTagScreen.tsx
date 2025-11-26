@@ -14,12 +14,12 @@ const mockTags = [
 export default function HistoryTagScreen({ onBack, onOpenBatchView }: Props) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <HeaderBar title="\u6383\u63cf\u7d00\u9304 - Tag" onBack={onBack} rightIcon="layers-outline" onRightPress={onOpenBatchView} />
+      <HeaderBar title="掃描紀錄 - Tag" onBack={onBack} rightIcon="layers-outline" onRightPress={onOpenBatchView} />
       <View style={{ padding: spacing.xl }}>
         <View style={styles.search}>
           <Ionicons name="search-outline" size={18} color={colors.mutedText} />
           <TextInput
-            placeholder="\u641c\u5c0b Tag \u7de8\u865f"
+            placeholder="搜尋 Tag 編號"
             placeholderTextColor={colors.placeholder}
             style={{ flex: 1, marginLeft: spacing.md }}
           />
@@ -36,7 +36,7 @@ export default function HistoryTagScreen({ onBack, onOpenBatchView }: Props) {
               <Ionicons name="pricetag-outline" size={16} color={colors.mutedText} />
               <Text style={styles.tagId}>{item.id}</Text>
             </View>
-            <Text style={styles.meta}>{`\u6383\u63cf ${item.times} \u6b21`}</Text>
+            <Text style={styles.meta}>掃描 {item.times} 次</Text>
             <View style={styles.badgeRow}>
               {item.batches.map((batch) => (
                 <View key={batch} style={styles.badge}>

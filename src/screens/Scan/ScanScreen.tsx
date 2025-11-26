@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors, radius, spacing, typography } from '../../theme';
@@ -6,64 +6,168 @@ import HeaderBar from '../../components/HeaderBar';
 import PrimaryButton from '../../components/PrimaryButton';
 import ManualInputModal from '../../modals/ManualInputModal';
 import Toast from '../../components/Toast';
+import { normalizeToPackageId } from '../../utils/epc';
+import { Session } from '../../storage/session';
+import { LogisticBranch } from '../../services/logistics';
+import { enqueueBatch, getQueueCount, QueuedBatch } from '../../storage/batchQueue';
+import { syncQueuedBatches } from '../../services/rf300';
 
 type Props = {
+  session: Session;
   mode: 'IN' | 'OUT';
   warehouseName: string;
+  branch: LogisticBranch;
+  orderNumber?: string;
   batchId?: string;
   onBack: () => void;
 };
 
 type Item = { id: string };
 
-export default function ScanScreen({ mode, warehouseName, batchId = 'B20251011-858', onBack }: Props) {
+export default function ScanScreen({ session, mode, warehouseName, branch, orderNumber, batchId = generateBatchNumber(), onBack }: Props) {
   const [scanning, setScanning] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [manual, setManual] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const toastTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const titleMode = useMemo(() => (mode === 'IN' ? '\u5165\u5eab' : '\u51fa\u5eab'), [mode]);
+  const titleMode = useMemo(() => (mode === 'IN' ? '入庫' : '出庫'), [mode]);
 
-  const addItem = (code: string) => {
+  const showToast = (message: string, duration = 1800) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = setTimeout(() => {
+      setToast(null);
+      toastTimer.current = null;
+    }, duration);
+  };
+
+  const refreshQueue = useCallback(async () => {
+    const count = await getQueueCount();
+    setPendingCount(count);
+  }, []);
+
+  useEffect(() => {
+    refreshQueue();
+  }, [refreshQueue]);
+
+  const appendItem = (code: string) => {
     setItems((prev) => [...prev, { id: code }]);
-    setToast(`\u6383\u63cf\u6210\u529f\uff1a${code}`);
-    setTimeout(() => setToast(null), 1800);
+    showToast(`掃描成功：${code}`);
+  };
+
+  const handleManualInput = (input: string): string | null => {
+    const value = input.trim();
+    if (!value) return '請輸入內容';
+    appendItem(value);
+    return null;
   };
 
   const clearAll = () => setItems([]);
+
+  const createBatchRecord = (): QueuedBatch => {
+    const now = new Date();
+    return {
+      id: `${Date.now()}`,
+      createdAt: now.getTime(),
+      batchNumber: batchId,
+      warehouseLabel: warehouseName,
+      mode,
+      orderNumber: orderNumber?.trim() || undefined,
+      date: formatDate(now),
+      epkIds: items.map((item) => item.id),
+      node: session.user.node,
+      logisticId: session.user.branch ?? 0,
+      vendorId: branch.id,
+      vendorBranchId: branch.branch_id ?? 0,
+    };
+  };
+
+  const attemptSync = async () => {
+    try {
+      setSyncing(true);
+      const result = await syncQueuedBatches(session);
+      await refreshQueue();
+      if (result.synced > 0) {
+        showToast(`同步成功：${result.synced} 批`, 2000);
+      }
+      if (result.error) {
+        showToast(`上傳未完成：${result.error}`, 2500);
+      }
+      if (result.synced === 0 && !result.error) {
+        showToast('目前沒有待同步資料', 1800);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '同步失敗';
+      showToast(message, 2500);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!items.length) {
+      if (!pendingCount) {
+        showToast('尚無可上傳的批次');
+        return;
+      }
+      await attemptSync();
+      return;
+    }
+
+    if (mode === 'OUT' && !orderNumber) {
+      showToast('出庫作業需輸入訂單編號');
+      return;
+    }
+
+    try {
+      const batchRecord = createBatchRecord();
+      await enqueueBatch(batchRecord);
+      await refreshQueue();
+      setItems([]);
+      showToast('已建立批次並準備上傳…');
+      await attemptSync();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '儲存批次失敗';
+      showToast(message, 2500);
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <HeaderBar title={`${batchId}  ${titleMode}`} onBack={onBack} />
       <View style={styles.topStats}>
-        <Text style={styles.statsLabel}>\u5df2\u6383\u63cf\u7b46\u6578</Text>
+        <Text style={styles.statsLabel}>已掃描筆數</Text>
         <Text style={styles.statsNum}>{items.length}</Text>
-        <Text style={styles.statsMeta}>{`\u5009\u5eab\uff1a${warehouseName}`}</Text>
+        <Text style={styles.statsMeta}>倉庫：{warehouseName}</Text>
+        <Text style={styles.statsMeta}>訂單編號：{orderNumber || '—'}</Text>
+        <Text style={styles.pending}>待同步批次：{pendingCount}</Text>
       </View>
 
       <View style={{ paddingHorizontal: spacing.xl }}>
         <PrimaryButton
-          title={scanning ? '\u505c\u6b62\u6383\u63cf' : '\u958b\u59cb\u6383\u63cf'}
+          title={scanning ? '停止掃描' : '開始掃描'}
           icon={scanning ? 'stop-circle-outline' : 'scan-outline'}
           onPress={() => {
             setScanning((value) => !value);
             if (scanning) {
-              setToast('\u6383\u63cf\u5df2\u505c\u6b62');
-              setTimeout(() => setToast(null), 1200);
+              showToast('掃描已停止', 1200);
             }
           }}
           style={{ marginTop: spacing.lg, backgroundColor: scanning ? '#E11D48' : colors.primary }}
         />
 
         <View style={styles.actionRow}>
-          <PrimaryButton title="\u624b\u52d5\u8f38\u5165" icon="keypad-outline" light onPress={() => setManual(true)} style={{ flex: 1 }} />
+          <PrimaryButton title="手動輸入" icon="keypad-outline" light onPress={() => setManual(true)} style={{ flex: 1 }} />
           <View style={{ width: spacing.lg }} />
-          <PrimaryButton title="\u6e05\u7a7a\u5217\u8868" icon="trash-outline" light onPress={clearAll} style={{ flex: 1 }} />
+          <PrimaryButton title="清空列表" icon="trash-outline" light onPress={clearAll} style={{ flex: 1 }} />
         </View>
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionHeaderText}>\u6383\u63cf\u660e\u7d30</Text>
+        <Text style={styles.sectionHeaderText}>掃描明細</Text>
       </View>
 
       <FlatList
@@ -83,18 +187,18 @@ export default function ScanScreen({ mode, warehouseName, batchId = 'B20251011-8
         ListEmptyComponent={() => (
           <View style={styles.empty}>
             <Ionicons name="information-circle-outline" size={36} color={colors.mutedText} />
-            <Text style={{ color: colors.mutedText, marginTop: spacing.md }}>\u66ab\u7121\u6383\u63cf\u8a18\u9304</Text>
+            <Text style={{ color: colors.mutedText, marginTop: spacing.md }}>暫無掃描紀錄</Text>
           </View>
         )}
       />
 
       <View style={{ paddingHorizontal: spacing.xl }}>
-        <PrimaryButton title="\u4e0a\u50b3\u8cc7\u6599" icon="cloud-upload-outline" />
+        <PrimaryButton title={syncing ? '同步中…' : '上傳資料'} icon="cloud-upload-outline" onPress={handleUpload} />
         <View style={{ height: spacing.md }} />
-        <PrimaryButton title="\u8fd4\u56de\u4e0a\u4e00\u9801" light onPress={onBack} />
+        <PrimaryButton title="返回上一頁" light onPress={onBack} />
       </View>
 
-      <ManualInputModal visible={manual} onClose={() => setManual(false)} onAdd={addItem} />
+      <ManualInputModal visible={manual} onClose={() => setManual(false)} onAdd={(value) => handleManualInput(value)} />
       <Toast visible={!!toast} message={toast || ''} />
     </SafeAreaView>
   );
@@ -105,6 +209,7 @@ const styles = StyleSheet.create({
   statsLabel: { color: colors.mutedText },
   statsNum: { marginTop: spacing.sm, fontSize: 56, fontWeight: '700', color: colors.text },
   statsMeta: { marginTop: 4, color: colors.mutedText },
+  pending: { marginTop: 4, color: colors.text, fontWeight: '600' },
   actionRow: { flexDirection: 'row', marginTop: spacing.md },
   sectionHeader: {
     borderTopWidth: 1,
@@ -137,3 +242,17 @@ const styles = StyleSheet.create({
   itemText: { color: colors.text, flex: 1 },
   empty: { alignItems: 'center', paddingVertical: spacing.xl },
 });
+
+function formatDate(date: Date) {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function generateBatchNumber() {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `B${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(
+    now.getSeconds(),
+  )}`;
+}
+

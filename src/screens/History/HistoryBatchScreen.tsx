@@ -9,20 +9,20 @@ type Props = { onBack: () => void; onOpenTagView: () => void };
 const mockBatches = [
   {
     id: 'B20251011-001',
-    status: '\u5df2\u5b8c\u6210',
+    status: '已完成',
     count: 6,
-    warehouse: '\u5009\u5eab A',
-    user: '\u80e1\u667a\u5049',
-    time: '2025/10/20 \u4e0a\u5348 02:43',
+    warehouse: '倉庫 A',
+    user: '胡智偉',
+    time: '2025/10/20 上午 02:43',
     tags: ['EBGA0000001', 'EBGA0000002', 'EBGA0000003', 'EBGA0000004', 'EBGA0000005'],
   },
   {
     id: 'B20251010-003',
-    status: '\u5df2\u5b8c\u6210',
+    status: '已完成',
     count: 5,
-    warehouse: '\u5009\u5eab A',
-    user: '\u6797\u4f69\u771f',
-    time: '2025/10/19 \u4e0b\u5348 02:43',
+    warehouse: '倉庫 A',
+    user: '林佩真',
+    time: '2025/10/19 下午 02:43',
     tags: ['EBGB0000001', 'EBGA0000004', 'EBGA0000009'],
   },
 ];
@@ -30,12 +30,12 @@ const mockBatches = [
 export default function HistoryBatchScreen({ onBack, onOpenTagView }: Props) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <HeaderBar title="\u6383\u63cf\u7d00\u9304 - \u6279\u6b21" onBack={onBack} rightIcon="pricetag-outline" onRightPress={onOpenTagView} />
+      <HeaderBar title="掃描紀錄 - 批次" onBack={onBack} rightIcon="pricetag-outline" onRightPress={onOpenTagView} />
       <View style={{ padding: spacing.xl }}>
         <View style={styles.search}>
           <Ionicons name="search-outline" size={18} color={colors.mutedText} />
           <TextInput
-            placeholder="\u641c\u5c0b\u6279\u6b21\u3001\u5009\u5eab\u3001\u55ae\u865f\u3001\u64cd\u4f5c\u4eba\u6216 Tag"
+            placeholder="搜尋批次、倉庫、單號、操作人或 Tag"
             placeholderTextColor={colors.placeholder}
             style={{ flex: 1, marginLeft: spacing.md }}
           />
@@ -60,11 +60,11 @@ export default function HistoryBatchScreen({ onBack, onOpenTagView }: Props) {
 
             <View style={styles.row}>
               <Ionicons name="home-outline" size={16} color={colors.mutedText} />
-              <Text style={styles.meta}>{`\u5009\u5eab\uff1a${item.warehouse}`}</Text>
+              <Text style={styles.meta}>倉庫：{item.warehouse}</Text>
             </View>
             <View style={styles.row}>
               <Ionicons name="person-outline" size={16} color={colors.mutedText} />
-              <Text style={styles.meta}>{`\u64cd\u4f5c\u4eba\uff1a${item.user}`}</Text>
+              <Text style={styles.meta}>操作人：{item.user}</Text>
             </View>
             <View style={styles.row}>
               <Ionicons name="time-outline" size={16} color={colors.mutedText} />
@@ -79,7 +79,7 @@ export default function HistoryBatchScreen({ onBack, onOpenTagView }: Props) {
               ))}
               {item.tags.length > 3 && (
                 <View style={styles.more}>
-                  <Text style={styles.moreText}>{`+${item.tags.length - 3} \u66f4\u591a`}</Text>
+                  <Text style={styles.moreText}>+{item.tags.length - 3} 更多</Text>
                 </View>
               )}
             </View>
