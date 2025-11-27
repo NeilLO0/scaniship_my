@@ -1,6 +1,8 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+// Bundle vector icon fonts (Ionicons) into the APK
+apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
 
 
 /**

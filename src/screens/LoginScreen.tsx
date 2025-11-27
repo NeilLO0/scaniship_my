@@ -1,25 +1,33 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Pressable,
   SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
-  Pressable,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors, radius, spacing, typography } from '../theme';
 
 type Props = {
-  onLogin: (userId: string) => void;
+  onLogin: (account: string, password: string) => Promise<void> | void;
+  loading?: boolean;
+  errorMessage?: string | null;
 };
 
-export default function LoginScreen({ onLogin }: Props) {
+export default function LoginScreen({ onLogin, loading = false, errorMessage }: Props) {
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
 
   const canLogin = account.trim().length > 0 && password.trim().length > 0;
+
+  const handleSubmit = () => {
+    if (!canLogin || loading) return;
+    onLogin(account.trim(), password.trim());
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -29,7 +37,7 @@ export default function LoginScreen({ onLogin }: Props) {
           <Ionicons name="cube-outline" size={36} color="#fff" />
         </View>
         <Text style={styles.title}>RFID 掃描系統</Text>
-        <Text style={styles.subtitle}>手持式倉儲管理應用程式</Text>
+        <Text style={styles.subtitle}>搭配 PDA 裝置進行包裝管理</Text>
 
         <View style={styles.form}>
           <Text style={styles.label}>帳號</Text>
@@ -52,14 +60,21 @@ export default function LoginScreen({ onLogin }: Props) {
             style={styles.input}
             secureTextEntry
             returnKeyType="done"
+            onSubmitEditing={handleSubmit}
           />
+
+          {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => canLogin && onLogin(account.trim())}
+            onPress={handleSubmit}
+            disabled={!canLogin || loading}
             style={({ pressed }) => [
               styles.button,
-              { opacity: pressed ? 0.9 : 1, backgroundColor: colors.primary },
+              {
+                opacity: pressed || !canLogin || loading ? 0.7 : 1,
+                backgroundColor: colors.primary,
+              },
             ]}
           >
             <Ionicons
@@ -68,7 +83,7 @@ export default function LoginScreen({ onLogin }: Props) {
               color="#fff"
               style={{ marginRight: spacing.md }}
             />
-            <Text style={styles.buttonText}>登入</Text>
+            {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.buttonText}>登入</Text>}
           </Pressable>
         </View>
       </View>
@@ -134,5 +149,8 @@ const styles = StyleSheet.create({
     fontSize: typography.button,
     fontWeight: '600',
   },
+  error: {
+    color: '#EF4444',
+    marginTop: spacing.md,
+  },
 });
-
