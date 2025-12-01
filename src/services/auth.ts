@@ -17,7 +17,7 @@ type LoginResponse = {
   };
 };
 
-const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days per spec
 
 const buildSignature = (timestamp: number, method: string, payload: string) => {
   const message = `${timestamp}${method.toUpperCase()}${payload}`;
@@ -43,8 +43,17 @@ export async function login(account: string, password: string): Promise<Session>
   let json: LoginResponse;
   try {
     json = (await response.json()) as LoginResponse;
+    if (__DEV__) {
+      console.log('[RF100] login response', {
+        status: response.status,
+        success: json?.success,
+        message: json?.message,
+        user: json?.data?.user,
+        tokenPreview: json?.data?.token?.slice(0, 12),
+      });
+    }
   } catch (error) {
-    throw new Error('登入回應解析失敗，請稍後再試');
+    throw new Error('登入回應解析失敗，請稍後重試');
   }
 
   if (!response.ok || !json.success || !json.data) {

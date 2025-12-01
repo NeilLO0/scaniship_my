@@ -25,12 +25,20 @@ export async function fetchLogisticBranches(userId: number, token: string): Prom
   let json: BranchResponse;
   try {
     json = (await response.json()) as BranchResponse;
+    if (__DEV__) {
+      console.log('[RF200] branch response', {
+        status: response.status,
+        success: json?.success,
+        message: json?.message,
+        count: json?.data?.length ?? 0,
+      });
+    }
   } catch (error) {
-    throw new Error('節點清單解析失敗');
+    throw new Error('Failed to parse branch list');
   }
 
   if (!response.ok || !json.success || !json.data) {
-    throw new Error(json?.message || `節點清單讀取失敗 (${response.status})`);
+    throw new Error(json?.message || `Failed to load branches (${response.status})`);
   }
   return json.data;
 }

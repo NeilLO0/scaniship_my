@@ -82,6 +82,8 @@ export default function ScanScreen({ session, mode, warehouseName, branch, order
       logisticId: session.user.branch ?? 0,
       vendorId: branch.id,
       vendorBranchId: branch.branch_id ?? 0,
+      ownerAccount: session.user.account,
+      ownerUserId: session.user.id,
     };
   };
 
@@ -91,13 +93,13 @@ export default function ScanScreen({ session, mode, warehouseName, branch, order
       const result = await syncQueuedBatches(session);
       await refreshQueue();
       if (result.synced > 0) {
-        showToast(`同步成功：${result.synced} 批`, 2000);
+        showToast(`已同步：${result.synced} 批`, 2000);
       }
       if (result.error) {
-        showToast(`上傳未完成：${result.error}`, 2500);
+        showToast(`上傳失敗：${result.error}`, 2500);
       }
       if (result.synced === 0 && !result.error) {
-        showToast('目前沒有待同步資料', 1800);
+        showToast('目前沒有待同步批次', 1800);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '同步失敗';
@@ -108,9 +110,16 @@ export default function ScanScreen({ session, mode, warehouseName, branch, order
   };
 
   const handleUpload = async () => {
+    if (__DEV__) {
+      console.log('[Scan] upload tap', { items: items.length, pendingCount, mode, orderNumber });
+    }
+    if (items.length > 500) {
+      showToast('Batch limit is 500 items. Please split and upload again.');
+      return;
+    }
     if (!items.length) {
       if (!pendingCount) {
-        showToast('尚無可上傳的批次');
+        showToast('沒有可上傳的批次');
         return;
       }
       await attemptSync();
@@ -118,7 +127,7 @@ export default function ScanScreen({ session, mode, warehouseName, branch, order
     }
 
     if (mode === 'OUT' && !orderNumber) {
-      showToast('出庫作業需輸入訂單編號');
+      showToast('出庫需輸入訂單編號');
       return;
     }
 
@@ -127,10 +136,10 @@ export default function ScanScreen({ session, mode, warehouseName, branch, order
       await enqueueBatch(batchRecord);
       await refreshQueue();
       setItems([]);
-      showToast('已建立批次並準備上傳…');
+      showToast('已建立批次並加入上傳隊列');
       await attemptSync();
     } catch (error) {
-      const message = error instanceof Error ? error.message : '儲存批次失敗';
+      const message = error instanceof Error ? error.message : '建立批次失敗';
       showToast(message, 2500);
     }
   };
@@ -153,7 +162,7 @@ export default function ScanScreen({ session, mode, warehouseName, branch, order
           onPress={() => {
             setScanning((value) => !value);
             if (scanning) {
-              showToast('掃描已停止', 1200);
+              showToast('掃描已暫停', 1200);
             }
           }}
           style={{ marginTop: spacing.lg, backgroundColor: scanning ? '#E11D48' : colors.primary }}
@@ -187,13 +196,13 @@ export default function ScanScreen({ session, mode, warehouseName, branch, order
         ListEmptyComponent={() => (
           <View style={styles.empty}>
             <Ionicons name="information-circle-outline" size={36} color={colors.mutedText} />
-            <Text style={{ color: colors.mutedText, marginTop: spacing.md }}>暫無掃描紀錄</Text>
+            <Text style={{ color: colors.mutedText, marginTop: spacing.md }}>尚無掃描資料</Text>
           </View>
         )}
       />
 
       <View style={{ paddingHorizontal: spacing.xl }}>
-        <PrimaryButton title={syncing ? '同步中…' : '上傳資料'} icon="cloud-upload-outline" onPress={handleUpload} />
+        <PrimaryButton title={syncing ? '同步中...' : '上傳資料'} icon="cloud-upload-outline" onPress={handleUpload} />
         <View style={{ height: spacing.md }} />
         <PrimaryButton title="返回上一頁" light onPress={onBack} />
       </View>
@@ -251,8 +260,5 @@ function formatDate(date: Date) {
 function generateBatchNumber() {
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
-  return `B${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(
-    now.getSeconds(),
-  )}`;
+  return `B${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
-

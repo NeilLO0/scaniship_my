@@ -12,7 +12,7 @@ import SettingsApiScreen from './src/screens/Settings/SettingsApiScreen';
 import { login } from './src/services/auth';
 import { Session, clearSession, loadSession, saveSession } from './src/storage/session';
 import { LogisticBranch } from './src/services/logistics';
-import { clearQueue as clearBatchQueue } from './src/storage/batchQueue';
+import { clearQueue as clearBatchQueue, clearQueueForOtherAccount } from './src/storage/batchQueue';
 
 if (__DEV__) {
   DevSettings.addMenuItem('Clear batch queue', () => {
@@ -50,6 +50,7 @@ export default function App() {
       const stored = await loadSession();
       if (stored && stored.expiresAt > Date.now()) {
         if (mounted) {
+          await clearQueueForOtherAccount(stored.user.account);
           setSession(stored);
           setRoute({ name: 'Main' });
         }
@@ -70,6 +71,7 @@ export default function App() {
     try {
       const nextSession = await login(account, password);
       await saveSession(nextSession);
+      await clearQueueForOtherAccount(nextSession.user.account);
       setSession(nextSession);
       go({ name: 'Main' });
     } catch (error) {
