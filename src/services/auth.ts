@@ -28,8 +28,13 @@ export async function login(account: string, password: string): Promise<Session>
   const payload = JSON.stringify({ account, password });
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = buildSignature(timestamp, 'POST', payload);
+  const url = `${apiConfig.baseUrl}${endpoints.login}`;
 
-  const response = await fetch(`${apiConfig.baseUrl}${endpoints.login}`, {
+  if (__DEV__) {
+    console.log('[RF100] request', { url, env: 'staging' });
+  }
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -40,7 +45,7 @@ export async function login(account: string, password: string): Promise<Session>
     body: payload,
   });
 
-  let json: LoginResponse;
+  let json: LoginResponse | null = null;
   try {
     json = (await response.json()) as LoginResponse;
     if (__DEV__) {
@@ -53,10 +58,19 @@ export async function login(account: string, password: string): Promise<Session>
       });
     }
   } catch (error) {
+    // 解析失敗時嘗試讀取文字，方便診斷
+    const clone = response.clone();
+    const text = await clone.text().catch(() => null);
+    if (__DEV__) {
+      console.warn('[RF100] parse error', {
+        status: response.status,
+        rawText: text,
+      });
+    }
     throw new Error('登入回應解析失敗，請稍後重試');
   }
 
-  if (!response.ok || !json.success || !json.data) {
+  if (!response.ok || !json?.success || !json?.data) {
     const message = json?.message || `登入失敗 (${response.status})`;
     throw new Error(message);
   }

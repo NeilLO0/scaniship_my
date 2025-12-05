@@ -1,33 +1,47 @@
-﻿import React from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 import HeaderBar from '../../components/HeaderBar';
 import { colors, radius, spacing, typography } from '../../theme';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { getQueuedBatches, QueuedBatch } from '../../storage/batchQueue';
+import { getHistoryEntries, HistoryEntry } from '../../storage/history';
+import { Session } from '../../storage/session';
 
-type Props = { onBack: () => void; onOpenTagView: () => void };
+type Props = { onBack: () => void; onOpenTagView: () => void; session: Session };
 
-const mockBatches = [
-  {
-    id: 'B20251011-001',
-    status: '已完成',
-    count: 6,
-    warehouse: '倉庫 A',
-    user: '胡智偉',
-    time: '2025/10/20 上午 02:43',
-    tags: ['EBGA0000001', 'EBGA0000002', 'EBGA0000003', 'EBGA0000004', 'EBGA0000005'],
-  },
-  {
-    id: 'B20251010-003',
-    status: '已完成',
-    count: 5,
-    warehouse: '倉庫 A',
-    user: '林佩真',
-    time: '2025/10/19 下午 02:43',
-    tags: ['EBGB0000001', 'EBGA0000004', 'EBGA0000009'],
-  },
-];
+type BatchItem =
+  | (HistoryEntry & { source: 'history' })
+  | (QueuedBatch & { source: 'pending'; syncedAt?: number });
 
-export default function HistoryBatchScreen({ onBack, onOpenTagView }: Props) {
+export default function HistoryBatchScreen({ onBack, onOpenTagView, session }: Props) {
+  const [items, setItems] = useState<BatchItem[]>([]);
+  const [query, setQuery] = useState('');
+
+  const refresh = async () => {
+    const pending = await getQueuedBatches();
+    const history = await getHistoryEntries(session.user.account);
+    const mapped: BatchItem[] = [
+      ...pending.map((p) => ({ ...p, source: 'pending' as const })),
+      ...history.map((h) => ({ ...h, source: 'history' as const })),
+    ];
+    setItems(mapped);
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    if (!text) return items;
+    return items.filter((item) => {
+      const haystack = `${item.batchNumber} ${'warehouseLabel' in item ? item.warehouseLabel : ''} ${
+        'orderNumber' in item ? item.orderNumber ?? '' : ''
+      }`.toLowerCase();
+      return haystack.includes(text);
+    });
+  }, [items, query]);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <HeaderBar title="掃描紀錄 - 批次" onBack={onBack} rightIcon="pricetag-outline" onRightPress={onOpenTagView} />
@@ -35,54 +49,53 @@ export default function HistoryBatchScreen({ onBack, onOpenTagView }: Props) {
         <View style={styles.search}>
           <Ionicons name="search-outline" size={18} color={colors.mutedText} />
           <TextInput
-            placeholder="搜尋批次、倉庫、單號、操作人或 Tag"
+            placeholder="搜尋批次、倉庫、訂單"
             placeholderTextColor={colors.placeholder}
             style={{ flex: 1, marginLeft: spacing.md }}
+            value={query}
+            onChangeText={setQuery}
           />
         </View>
       </View>
 
       <FlatList
-        data={mockBatches}
-        keyExtractor={(item) => item.id}
+        data={filtered}
+        keyExtractor={(item) => `${item.batchNumber}-${item.source}`}
         contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <View>
-                <Text style={styles.batch}>{item.id}</Text>
-                <Text style={styles.status}>{item.status}</Text>
+                <Text style={styles.batch}>{item.batchNumber}</Text>
+                <Text style={[styles.status, item.source === 'pending' && { color: '#F59E0B' }]}> 
+                  {item.source === 'pending' ? '待上傳' : '已上傳'}
+                </Text>
               </View>
               <View style={styles.countBubble}>
-                <Text style={{ color: colors.text }}>{item.count}</Text>
+                <Text style={{ color: colors.text }}>{'count' in item ? item.count : item.epkIds?.length || 0}</Text>
               </View>
             </View>
 
             <View style={styles.row}>
               <Ionicons name="home-outline" size={16} color={colors.mutedText} />
-              <Text style={styles.meta}>倉庫：{item.warehouse}</Text>
+              <Text style={styles.meta}>倉庫：{'warehouseLabel' in item ? item.warehouseLabel : ''}</Text>
             </View>
             <View style={styles.row}>
-              <Ionicons name="person-outline" size={16} color={colors.mutedText} />
-              <Text style={styles.meta}>操作人：{item.user}</Text>
+              <Ionicons name="pricetag-outline" size={16} color={colors.mutedText} />
+              <Text style={styles.meta}>訂單：{'orderNumber' in item ? item.orderNumber || '—' : '—'}</Text>
             </View>
             <View style={styles.row}>
               <Ionicons name="time-outline" size={16} color={colors.mutedText} />
-              <Text style={styles.meta}>{item.time}</Text>
+              <Text style={styles.meta}>
+                {'syncedAt' in item && item.syncedAt ? new Date(item.syncedAt).toLocaleString() : '尚未上傳'}
+              </Text>
             </View>
-
-            <View style={styles.tagRow}>
-              {item.tags.slice(0, 3).map((tag) => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
-              {item.tags.length > 3 && (
-                <View style={styles.more}>
-                  <Text style={styles.moreText}>+{item.tags.length - 3} 更多</Text>
-                </View>
-              )}
-            </View>
+          </View>
+        )}
+        ListEmptyComponent={() => (
+          <View style={{ alignItems: 'center', padding: spacing.xl }}>
+            <Ionicons name="information-circle-outline" size={28} color={colors.mutedText} />
+            <Text style={{ color: colors.mutedText, marginTop: spacing.sm }}>尚無掃描紀錄</Text>
           </View>
         )}
       />
@@ -119,9 +132,4 @@ const styles = StyleSheet.create({
   countBubble: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   meta: { color: colors.text, fontSize: typography.body },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.md },
-  tag: { backgroundColor: '#F1F5F9', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  tagText: { color: colors.text, fontSize: 12 },
-  more: { backgroundColor: '#F1F5F9', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  moreText: { color: colors.text, fontSize: 12 },
 });

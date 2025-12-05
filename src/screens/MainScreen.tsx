@@ -23,6 +23,16 @@ type Props = {
   onOpenSettings?: () => void;
 };
 
+type SelectOption = { label: string; value: string };
+
+type SelectProps = {
+  value: string | null;
+  onChange: (v: string) => void;
+  placeholder: string;
+  options: SelectOption[];
+  disabled?: boolean;
+};
+
 export default function MainScreen({ session, onLogout, onStartScan, onOpenHistory, onOpenSettings }: Props) {
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [status, setStatus] = useState<'IN' | 'OUT' | null>(null);
@@ -75,7 +85,7 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
   const handleStart = () => {
     if (!onStartScan || !selectedBranch || !status) return;
     if (status === 'OUT' && !orderNo.trim()) {
-      setOrderError('出庫作業需輸入訂單編號');
+      setOrderError('出庫需輸入訂單編號');
       return;
     }
     setOrderError(null);
@@ -93,7 +103,7 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
       <View style={styles.header}>
         <Ionicons name="person-outline" size={20} color="#fff" />
         <View style={styles.headerTextWrap}>
-          <Text style={styles.headerCaption}>操作人員</Text>
+          <Text style={styles.headerCaption}>登入帳號</Text>
           <Text style={styles.headerUser}>{session.user.account}</Text>
         </View>
         <View style={{ flex: 1 }} />
@@ -105,12 +115,12 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
       <View style={styles.body}>
         <View style={styles.card}>
           <Text style={styles.cardTitle}>建立新批次</Text>
-          <Text style={styles.cardSub}>選擇倉庫與狀態後即可開始掃描</Text>
+          <Text style={styles.cardSub}>選擇倉庫與作業類型後即可開始掃描</Text>
 
           <View style={{ marginTop: spacing.lg }}>
             <Text style={styles.label}>倉庫 *</Text>
             <Select
-              placeholder={branchesLoading ? '讀取中…' : '請選擇倉庫'}
+              placeholder={branchesLoading ? '讀取中...' : '請選擇倉庫'}
               value={selectedBranchId}
               onChange={(value) => setSelectedBranchId(value)}
               options={branchOptions}
@@ -120,9 +130,9 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
           </View>
 
           <View style={{ marginTop: spacing.lg }}>
-            <Text style={styles.label}>狀態 *</Text>
+            <Text style={styles.label}>作業 *</Text>
             <Select
-              placeholder="請選擇狀態"
+              placeholder="請選擇作業"
               value={status}
               onChange={(value) => setStatus(value as 'IN' | 'OUT')}
               options={statusOptions}
@@ -130,7 +140,7 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
           </View>
 
           <View style={{ marginTop: spacing.lg }}>
-            <Text style={styles.label}>訂單編號 (出庫必填)</Text>
+            <Text style={styles.label}>訂單編號 (出庫時必填)</Text>
             <TextInput
               value={orderNo}
               onChangeText={(text) => {
@@ -158,103 +168,13 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
 
           <Pressable style={styles.quickTile} onPress={onOpenSettings}>
             <Ionicons name="settings-outline" size={20} color={colors.text} />
-            <Text style={styles.quickLabel}>系統設定</Text>
+            <Text style={styles.quickLabel}>設定</Text>
           </Pressable>
-        </View>
-
-        <View style={styles.debugBox}>
-          <Text style={styles.debugTitle}>API 節點回傳</Text>
-          {branchesLoading ? (
-            <Text style={styles.debugText}>讀取中...</Text>
-          ) : branchesError ? (
-            <Text style={[styles.debugText, { color: '#DC2626' }]}>{branchesError}</Text>
-          ) : branches.length ? (
-            <Text style={styles.debugJson}>{JSON.stringify(branches, null, 2)}</Text>
-          ) : (
-            <Text style={styles.debugText}>尚未取得節點資料</Text>
-          )}
         </View>
       </View>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  header: {
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-  },
-  headerTextWrap: { marginLeft: spacing.md },
-  headerCaption: { color: '#fff', opacity: 0.7, fontSize: 12 },
-  headerUser: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
-  body: { flex: 1, padding: spacing.xl, gap: spacing.xl },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    padding: spacing.lg,
-  },
-  cardTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
-  cardSub: { marginTop: 4, color: colors.mutedText, fontSize: typography.body },
-  label: { color: colors.text, fontSize: typography.label, marginBottom: spacing.sm },
-  input: {
-    backgroundColor: colors.inputBg,
-    borderRadius: radius.md,
-    height: 48,
-    paddingHorizontal: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    fontSize: typography.body,
-  },
-  primaryBtn: {
-    marginTop: spacing.xl,
-    height: 48,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  primaryBtnText: { color: '#fff', fontSize: typography.button, fontWeight: '600' },
-  quickRow: { flexDirection: 'row', gap: spacing.lg },
-  quickTile: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    paddingVertical: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickLabel: { marginTop: spacing.sm, color: colors.text },
-  debugBox: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    padding: spacing.lg,
-    backgroundColor: '#fff',
-  },
-  debugTitle: { fontWeight: '600', marginBottom: spacing.sm, color: colors.text },
-  debugText: { color: colors.mutedText },
-  debugJson: { color: colors.text, fontFamily: 'monospace', fontSize: 12 },
-  error: { color: '#DC2626', marginTop: spacing.sm },
-});
-
-type SelectOption = { label: string; value: string };
-
-type SelectProps = {
-  value: string | null;
-  onChange: (v: string) => void;
-  placeholder: string;
-  options: SelectOption[];
-  disabled?: boolean;
-};
 
 function Select({ value, onChange, placeholder, options, disabled }: SelectProps) {
   const [open, setOpen] = useState(false);
@@ -316,6 +236,63 @@ function Select({ value, onChange, placeholder, options, disabled }: SelectProps
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.background },
+  header: {
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+  },
+  headerTextWrap: { marginLeft: spacing.md },
+  headerCaption: { color: '#fff', opacity: 0.7, fontSize: 12 },
+  headerUser: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
+  body: { flex: 1, padding: spacing.xl, gap: spacing.xl },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    padding: spacing.lg,
+  },
+  cardTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+  cardSub: { marginTop: 4, color: colors.mutedText, fontSize: typography.body },
+  label: { color: colors.text, fontSize: typography.label, marginBottom: spacing.sm },
+  input: {
+    backgroundColor: colors.inputBg,
+    borderRadius: radius.md,
+    height: 48,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    fontSize: typography.body,
+  },
+  primaryBtn: {
+    marginTop: spacing.xl,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  primaryBtnText: { color: '#fff', fontSize: typography.button, fontWeight: '600' },
+  quickRow: { flexDirection: 'row', gap: spacing.lg },
+  quickTile: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickLabel: { marginTop: spacing.sm, color: colors.text },
+  error: { color: '#DC2626', marginTop: spacing.sm },
+});
 
 const selectStyles = StyleSheet.create({
   base: {

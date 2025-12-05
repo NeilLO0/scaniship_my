@@ -1,6 +1,7 @@
 import { apiConfig, endpoints } from '../config/api';
 import { Session } from '../storage/session';
 import { QueuedBatch, clearQueueForOtherAccount, getQueuedBatches, removeBatch } from '../storage/batchQueue';
+import { addUploadedBatch } from '../storage/history';
 
 type Rf300Response = {
   success: boolean;
@@ -94,6 +95,7 @@ export async function syncQueuedBatches(session: Session) {
   for (const batch of queue) {
     try {
       await uploadBatch(batch, session);
+      await addUploadedBatch(batch, Date.now());
       await removeBatch(batch.id);
       synced += 1;
     } catch (err) {

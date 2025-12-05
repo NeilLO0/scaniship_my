@@ -119,4 +119,6 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+    // Vendor UHF SDK jars (UHF reader + serial port)
+    implementation fileTree(dir: "src/main/jniLibs/libs", include: ["**/*.jar"])
 }

@@ -113,9 +113,9 @@ export default function App() {
           />
         );
       case 'HistoryBatch':
-        return <HistoryBatchScreen onBack={() => go({ name: 'Main' })} onOpenTagView={() => go({ name: 'HistoryTag' })} />;
+        return <HistoryBatchScreen session={session} onBack={() => go({ name: 'Main' })} onOpenTagView={() => go({ name: 'HistoryTag' })} />;
       case 'HistoryTag':
-        return <HistoryTagScreen onBack={() => go({ name: 'Main' })} onOpenBatchView={() => go({ name: 'HistoryBatch' })} />;
+        return <HistoryTagScreen session={session} onBack={() => go({ name: 'Main' })} onOpenBatchView={() => go({ name: 'HistoryBatch' })} />;
       case 'SettingsPin':
         return <SettingsPinScreen onBack={() => go({ name: 'Main' })} onVerified={(target) => go({ name: target === 'hardware' ? 'SettingsHardware' : 'SettingsApi' })} />;
       case 'SettingsHardware':

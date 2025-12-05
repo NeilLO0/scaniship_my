@@ -19,12 +19,7 @@ const CREDENTIALS: Record<ApiEnvironment, ApiCredential> = {
   },
 };
 
-/**
- * Force the app to use the staging (測試) environment so we can validate
- * against the test API keys without touching production data.
- */
 const ACTIVE_ENV: ApiEnvironment = 'staging';
-
 export const apiConfig = CREDENTIALS[ACTIVE_ENV];
 
 export const endpoints = {
