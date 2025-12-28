@@ -13,18 +13,18 @@ type Props = {
 export default function HeaderBar({ title, onBack, rightIcon, onRightPress }: Props) {
   return (
     <View style={styles.header}>
-      <View style={{ width: 32 }}>
+      <View style={{ width: 40 }}>
         {onBack ? (
-          <Pressable onPress={onBack} accessibilityLabel="返回">
+          <Pressable onPress={onBack} hitSlop={10} accessibilityLabel="返回">
             <Ionicons name="chevron-back-outline" size={22} color="#fff" />
           </Pressable>
         ) : null}
       </View>
       <Text style={styles.title}>{title}</Text>
-      <View style={{ width: 32, alignItems: 'flex-end' }}>
+      <View style={{ width: 44, alignItems: 'flex-end' }}>
         {rightIcon ? (
-          <Pressable onPress={onRightPress} accessibilityLabel="操作">
-            <Ionicons name={rightIcon as any} size={20} color="#fff" />
+          <Pressable onPress={onRightPress} hitSlop={12} accessibilityLabel="操作" style={{ paddingHorizontal: 2, paddingVertical: 2 }}>
+            <Ionicons name={rightIcon as any} size={22} color="#fff" />
           </Pressable>
         ) : null}
       </View>

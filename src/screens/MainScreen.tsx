@@ -14,6 +14,9 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors, radius, spacing, typography } from '../theme';
 import { Session } from '../storage/session';
 import { fetchLogisticBranches, LogisticBranch } from '../services/logistics';
+import { syncQueuedBatches } from '../services/rf300';
+import { loadCachedBranches, saveCachedBranches } from '../storage/branchesCache';
+import { flushBillingLogs } from '../services/billingLog';
 
 type Props = {
   session: Session;
@@ -41,15 +44,24 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
   const [branches, setBranches] = useState<LogisticBranch[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [branchesError, setBranchesError] = useState<string | null>(null);
+  const autoSyncedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
+    // 先載入快取，支援離線選擇
+    loadCachedBranches()
+      .then((cached) => {
+        if (mounted && cached.length) setBranches(cached);
+      })
+      .catch(() => {});
+
     setBranchesLoading(true);
     setBranchesError(null);
     fetchLogisticBranches(session.user.id, session.token)
       .then((data) => {
         if (!mounted) return;
         setBranches(data);
+        saveCachedBranches(data);
       })
       .catch((error) => mounted && setBranchesError(error instanceof Error ? error.message : '讀取節點失敗'))
       .finally(() => mounted && setBranchesLoading(false));
@@ -57,6 +69,17 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
       mounted = false;
     };
   }, [session.user.id, session.token]);
+
+  // 進入主頁自動嘗試同步離線批次（僅一次）
+  useEffect(() => {
+    if (autoSyncedRef.current) return;
+    autoSyncedRef.current = true;
+    syncQueuedBatches(session)
+      .catch(() => {})
+      .finally(() => {
+        flushBillingLogs().catch(() => {});
+      });
+  }, [session]);
 
   const branchOptions = useMemo(
     () =>
@@ -119,13 +142,13 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
 
           <View style={{ marginTop: spacing.lg }}>
             <Text style={styles.label}>倉庫 *</Text>
-            <Select
-              placeholder={branchesLoading ? '讀取中...' : '請選擇倉庫'}
-              value={selectedBranchId}
-              onChange={(value) => setSelectedBranchId(value)}
-              options={branchOptions}
-              disabled={branchesLoading || !branchOptions.length}
-            />
+          <Select
+            placeholder={branchesLoading ? '讀取中...' : '請選擇倉庫'}
+            value={selectedBranchId}
+            onChange={(value) => setSelectedBranchId(value)}
+            options={branchOptions}
+            disabled={(branchesLoading && !branchOptions.length) || !branchOptions.length}
+          />
             {branchesError ? <Text style={styles.error}>{branchesError}</Text> : null}
           </View>
 
@@ -134,7 +157,14 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
             <Select
               placeholder="請選擇作業"
               value={status}
-              onChange={(value) => setStatus(value as 'IN' | 'OUT')}
+              onChange={(value) => {
+                const nextStatus = value as 'IN' | 'OUT';
+                setStatus(nextStatus);
+                if (nextStatus === 'IN') {
+                  setOrderNo('');
+                  setOrderError(null);
+                }
+              }}
               options={statusOptions}
             />
           </View>
@@ -149,7 +179,11 @@ export default function MainScreen({ session, onLogout, onStartScan, onOpenHisto
               }}
               placeholder="輸入訂單編號"
               placeholderTextColor={colors.placeholder}
-              style={styles.input}
+              style={[
+                styles.input,
+                status === 'IN' && { backgroundColor: '#f1f5f9', color: colors.mutedText, opacity: 0.8 },
+              ]}
+              editable={status !== 'IN'}
             />
             {orderError ? <Text style={styles.error}>{orderError}</Text> : null}
           </View>

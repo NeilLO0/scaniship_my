@@ -16,7 +16,7 @@ export type HistoryEntry = {
 };
 
 const STORAGE_KEY = 'rfid_history_v1';
-const RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // keep 7 days
+const RETENTION_MS = 24 * 60 * 60 * 1000; // keep 24 hours
 
 async function readHistory(): Promise<HistoryEntry[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);

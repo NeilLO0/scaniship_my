@@ -1,18 +1,19 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, Modal, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import HeaderBar from '../../components/HeaderBar';
 import PrimaryButton from '../../components/PrimaryButton';
 import ManualInputModal from '../../modals/ManualInputModal';
 import Toast from '../../components/Toast';
 import { LogisticBranch } from '../../services/logistics';
-import { syncQueuedBatches } from '../../services/rf300';
+import { syncQueuedBatches, SyncResult } from '../../services/rf300';
 import { Session } from '../../storage/session';
-import { clearQueue, enqueueBatch, getQueueCount, QueuedBatch } from '../../storage/batchQueue';
+import { clearQueueForMode, enqueueBatch, getQueueCountFor, QueuedBatch } from '../../storage/batchQueue';
 import { uhf } from '../../native/uhf';
 import { colors, radius, spacing, typography } from '../../theme';
 import { normalizeToPackageId } from '../../utils/epc';
 import { loadUhfPowerPercent } from '../../storage/uhfPower';
+import SettingsHardwareScreen from '../Settings/SettingsHardwareScreen';
 
 type Props = {
   session: Session;
@@ -24,7 +25,9 @@ type Props = {
   onBack: () => void;
 };
 
-type Item = { id: string };
+type Item = { id: string; status: 'valid' | 'invalid' };
+
+type SyncErrorDetail = { batchNumber: string; error: string; epkIds?: string[] };
 
 export default function ScanScreen({
   session,
@@ -42,6 +45,13 @@ export default function ScanScreen({
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [powerPct, setPowerPct] = useState(75);
+  const [showPower, setShowPower] = useState(false);
+  const [showInvalidModal, setShowInvalidModal] = useState(false);
+  const [showSyncErrorModal, setShowSyncErrorModal] = useState(false);
+  const [syncErrorDetails, setSyncErrorDetails] = useState<SyncErrorDetail[]>([]);
+  const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
+  const seenErrorBatches = useRef<Set<string>>(new Set());
+
   const seen = useRef<Set<string>>(new Set());
   const toastTimer = useRef<NodeJS.Timeout | null>(null);
   const lastButtonTs = useRef<number>(0);
@@ -49,6 +59,11 @@ export default function ScanScreen({
   const hardwareAvailable = uhf.isAvailable;
 
   const titleMode = useMemo(() => (mode === 'IN' ? '入庫' : '出庫'), [mode]);
+  const validCount = useMemo(() => items.filter((i) => i.status === 'valid').length, [items]);
+  const invalidCount = useMemo(() => items.filter((i) => i.status === 'invalid').length, [items]);
+  const invalidList = useMemo(() => items.filter((i) => i.status === 'invalid'), [items]);
+
+  const percentToDbm = useCallback((pct: number) => Math.max(5, Math.min(33, Math.round((pct / 100) * 33))), []);
 
   useEffect(() => {
     loadUhfPowerPercent()
@@ -61,8 +76,6 @@ export default function ScanScreen({
       .catch(() => {});
   }, [hardwareAvailable, percentToDbm]);
 
-  const percentToDbm = useCallback((pct: number) => Math.max(5, Math.min(33, Math.round((pct / 100) * 33))), []);
-
   const showToast = (message: string, duration = 1800) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast(message);
@@ -73,9 +86,9 @@ export default function ScanScreen({
   };
 
   const refreshQueue = useCallback(async () => {
-    const count = await getQueueCount();
+    const count = await getQueueCountFor(session.user.account, mode);
     setPendingCount(count);
-  }, []);
+  }, [mode, session.user.account]);
 
   useEffect(() => {
     refreshQueue();
@@ -89,8 +102,15 @@ export default function ScanScreen({
       return;
     }
     seen.current.add(code);
-    setItems((prev) => sortItems([...prev, { id: code }]));
+    setItems((prev) => sortItems([...prev, { id: code, status: 'valid' }]));
     showToast(`已加入：${code}`);
+  };
+
+  const appendInvalid = (code: string, message?: string) => {
+    if (seen.current.has(code)) return;
+    seen.current.add(code);
+    setItems((prev) => sortItems([...prev, { id: code, status: 'invalid' }]));
+    if (message) showToast(message);
   };
 
   const handleManualInput = (input: string): string | null => {
@@ -108,14 +128,15 @@ export default function ScanScreen({
   const clearAll = () => {
     setItems([]);
     seen.current.clear();
-    if (hardwareAvailable) {
-      uhf.clear();
-    }
+    if (hardwareAvailable) uhf.clear();
   };
 
   const clearPendingQueue = async () => {
-    await clearQueue();
+    await clearQueueForMode(session.user.account, mode);
     await refreshQueue();
+    setSyncErrorDetails([]);
+    seenErrorBatches.current.clear();
+    setShowSyncErrorModal(false);
     showToast('已清除待同步批次');
   };
 
@@ -153,7 +174,7 @@ export default function ScanScreen({
           appendItem(pkg);
         } catch (error) {
           const message = error instanceof Error ? error.message : '未知錯誤';
-          showToast(message);
+          appendInvalid(epc, message);
         }
       });
     });
@@ -174,6 +195,7 @@ export default function ScanScreen({
 
   const createBatchRecord = (): QueuedBatch => {
     const now = new Date();
+    const validEpkIds = items.filter((item) => item.status === 'valid').map((item) => item.id);
     return {
       id: `${Date.now()}`,
       createdAt: now.getTime(),
@@ -182,7 +204,7 @@ export default function ScanScreen({
       mode,
       orderNumber: orderNumber?.trim() || undefined,
       date: formatDate(now),
-      epkIds: items.map((item) => item.id),
+      epkIds: validEpkIds,
       node: session.user.node,
       logisticId: session.user.branch ?? 0,
       vendorId: branch.id,
@@ -192,23 +214,57 @@ export default function ScanScreen({
     };
   };
 
+  const isNetworkError = (msg?: string) => {
+    if (!msg) return false;
+    const lower = msg.toLowerCase();
+    return lower.includes('wifi網路連線異常') || lower.includes('network request failed');
+  };
+
+  const handleSyncResult = (result: SyncResult) => {
+    if (result.failed > 0) {
+      const failedDetails = result.results.filter((r) => r.status === 'failed' || r.status === 'partial');
+      const newOnes = failedDetails.filter(
+        (r) => !seenErrorBatches.current.has(r.batchNumber) && !isNetworkError(r.error),
+      );
+      if (newOnes.length) {
+        newOnes.forEach((r) => seenErrorBatches.current.add(r.batchNumber));
+        setSyncErrorDetails((prev) => [
+          ...prev,
+          ...newOnes.map((r) => ({
+            batchNumber: r.batchNumber,
+            error: r.error || '上傳失敗',
+            epkIds: r.epkIds,
+          })),
+        ]);
+        setShowSyncErrorModal(true);
+      }
+    } else {
+      setSyncErrorDetails([]);
+      seenErrorBatches.current.clear();
+    }
+    if (result.synced > 0) {
+      showToast(`已同步${result.synced} 筆`, 2000);
+    }
+    if (result.failed === 0 && result.synced === 0) {
+      showToast('目前沒有待同步批次', 1800);
+    }
+  };
+
   const attemptSync = async () => {
     try {
       setSyncing(true);
-      const result = await syncQueuedBatches(session);
+      const result = await syncQueuedBatches(session, { mode });
       await refreshQueue();
-      if (result.synced > 0) {
-        showToast(`已同步 ${result.synced} 筆`, 2000);
-      }
-      if (result.error) {
-        showToast(`上傳錯誤：${result.error}`, 2500);
-      }
-      if (result.synced === 0 && !result.error) {
-        showToast('目前沒有待同步批次', 1800);
-      }
+      handleSyncResult(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : '同步失敗';
-      showToast(message, 2500);
+      if (isNetworkError(message)) {
+        showToast(message);
+      } else if (!seenErrorBatches.current.has(batchId)) {
+        seenErrorBatches.current.add(batchId);
+        setSyncErrorDetails((prev) => [...prev, { batchNumber: batchId, error: message }]);
+        setShowSyncErrorModal(true);
+      }
     } finally {
       setSyncing(false);
     }
@@ -246,19 +302,34 @@ export default function ScanScreen({
       await attemptSync();
     } catch (error) {
       const message = error instanceof Error ? error.message : '建立批次失敗';
-      showToast(message, 2500);
+      setSyncErrorModal({ visible: true, details: [{ batchNumber: batchId, error: message }] });
     }
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <HeaderBar title={`${batchId}  ${titleMode}`} onBack={onBack} />
+      <HeaderBar title={`${batchId}  ${titleMode}`} onBack={onBack} rightIcon="settings-outline" onRightPress={() => setShowPower(true)} />
       <View style={styles.topStats}>
-        <Text style={styles.statsLabel}>已掃描筆數</Text>
-        <Text style={styles.statsNum}>{items.length}</Text>
-        <Text style={styles.statsMeta}>倉庫：{warehouseName}</Text>
-        <Text style={styles.statsMeta}>訂單編號：{orderNumber || '—'}</Text>
-        <Text style={styles.pending}>待同步批次：{pendingCount}</Text>
+        <View style={{ alignItems: 'center', width: '100%' }}>
+          <Text style={styles.statsLabel}>已掃描筆數</Text>
+          <Text style={styles.statsNum}>{items.length}</Text>
+          <Text style={styles.statsMeta}>倉庫：{warehouseName}</Text>
+          <Text style={styles.statsMeta}>訂單編號：{orderNumber || '—'}</Text>
+          <Text style={styles.pending}>待同步批次：{pendingCount}</Text>
+          <Text style={styles.pending}>
+            有效：{validCount}　無效：{invalidCount}　總計：{items.length}
+          </Text>
+        </View>
+        <View style={styles.badgeColumn}>
+          <TouchableOpacity style={styles.badgeBtn} onPress={() => setShowInvalidModal(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.text} />
+            <Text style={styles.badgeText}>{invalidCount}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.badgeBtn, { marginTop: spacing.sm }]} onPress={() => setShowSyncErrorModal(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Ionicons name="alert-circle-outline" size={18} color="#dc2626" />
+            <Text style={[styles.badgeText, { color: '#dc2626' }]}>{syncErrorDetails.length}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={{ paddingHorizontal: spacing.xl }}>
@@ -290,9 +361,12 @@ export default function ScanScreen({
             <View style={styles.indexBubble}>
               <Text style={{ color: colors.text }}>{index + 1}</Text>
             </View>
-            <Text style={styles.itemText}>{item.id}</Text>
+            <Text style={[styles.itemText, item.status === 'invalid' && { color: '#dc2626' }]}>
+              {item.id}
+              {item.status === 'invalid' ? '（無效）' : ''}
+            </Text>
             <TouchableOpacity onPress={() => handleDelete(item.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Ionicons name='close-outline' size={18} color={colors.mutedText} />
+              <Ionicons name="close-outline" size={18} color={colors.mutedText} />
             </TouchableOpacity>
           </View>
         )}
@@ -308,22 +382,131 @@ export default function ScanScreen({
         <PrimaryButton title={syncing ? '同步中..' : '上傳資料'} icon="cloud-upload-outline" onPress={handleUpload} />
         <View style={{ height: spacing.md }} />
         <PrimaryButton title="清除待同步批次" light onPress={clearPendingQueue} />
-        <View style={{ height: spacing.md }} />
-        <PrimaryButton title="返回上一頁" light onPress={onBack} />
       </View>
 
       <ManualInputModal visible={manual} onClose={() => setManual(false)} onAdd={(value) => handleManualInput(value)} />
       <Toast visible={!!toast} message={toast || ''} />
+
+      <Modal visible={showPower} animationType="slide">
+        <SettingsHardwareScreen onBack={() => setShowPower(false)} />
+      </Modal>
+
+      <Modal visible={showInvalidModal} animationType="slide" onRequestClose={() => setShowInvalidModal(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+          <HeaderBar title="無效掃描記錄" onBack={() => setShowInvalidModal(false)} />
+          <FlatList
+            data={invalidList}
+            keyExtractor={(item, idx) => `${item.id}-${idx}`}
+            contentContainerStyle={{ padding: spacing.xl, paddingBottom: spacing.xxl }}
+            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            renderItem={({ item, index }) => (
+              <View style={styles.rowItem}>
+                <View style={styles.indexBubble}>
+                  <Text style={{ color: colors.text }}>{index + 1}</Text>
+                </View>
+                <Text style={[styles.itemText, { color: '#dc2626' }]}>{item.id}（無效）</Text>
+              </View>
+            )}
+            ListEmptyComponent={() => (
+              <View style={styles.empty}>
+                <Ionicons name="information-circle-outline" size={36} color={colors.mutedText} />
+                <Text style={{ color: colors.mutedText, marginTop: spacing.md }}>目前沒有無效記錄</Text>
+              </View>
+            )}
+          />
+        </SafeAreaView>
+      </Modal>
+
+      <Modal visible={showSyncErrorModal} animationType="slide" onRequestClose={() => setShowSyncErrorModal(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+          <HeaderBar title="上傳失敗詳情" onBack={() => setShowSyncErrorModal(false)} />
+          <FlatList
+            data={syncErrorDetails}
+            keyExtractor={(item, idx) => `${item.batchNumber}-${idx}`}
+            contentContainerStyle={{ padding: spacing.xl, paddingBottom: spacing.xxl }}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+            renderItem={({ item }) => (
+              <View style={[styles.errorCard, { borderColor: '#dc2626' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={styles.indexBubble}>
+                    <Ionicons name="warning-outline" size={16} color="#dc2626" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemText, { color: '#dc2626', fontWeight: '700' }]}>批次 {item.batchNumber}</Text>
+                    <Text style={{ color: colors.text, marginTop: 4 }}>原因：{item.error}</Text>
+                  </View>
+                  {item.epkIds && item.epkIds.length ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const next = new Set(expandedErrors);
+                        if (next.has(item.batchNumber)) next.delete(item.batchNumber);
+                        else next.add(item.batchNumber);
+                        setExpandedErrors(next);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name={expandedErrors.has(item.batchNumber) ? 'chevron-up-outline' : 'chevron-down-outline'}
+                        size={18}
+                        color={colors.text}
+                      />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {item.epkIds && item.epkIds.length && expandedErrors.has(item.batchNumber) ? (
+                  <View style={styles.epcWrap}>
+                    {item.epkIds.map((epc, idx) => (
+                      <View key={`${epc}-${idx}`} style={styles.epcChip}>
+                        <Text style={styles.epcText}>{epc}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            )}
+            ListEmptyComponent={() => (
+              <View style={styles.empty}>
+                <Ionicons name="information-circle-outline" size={36} color={colors.mutedText} />
+                <Text style={{ color: colors.mutedText, marginTop: spacing.md }}>目前沒有失敗紀錄</Text>
+              </View>
+            )}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  topStats: { backgroundColor: '#EAEEF3', alignItems: 'center', paddingVertical: spacing.xl },
+  topStats: {
+    backgroundColor: '#EAEEF3',
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    position: 'relative',
+  },
   statsLabel: { color: colors.mutedText },
   statsNum: { marginTop: spacing.sm, fontSize: 56, fontWeight: '700', color: colors.text },
   statsMeta: { marginTop: 4, color: colors.mutedText },
   pending: { marginTop: 4, color: colors.text, fontWeight: '600' },
+  badgeColumn: {
+    position: 'absolute',
+    right: spacing.xl,
+    top: spacing.xl,
+    alignItems: 'flex-end',
+  },
+  badgeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+  },
+  badgeText: { marginLeft: 4, color: colors.text, fontWeight: '600' },
   actionRow: { flexDirection: 'row', marginTop: spacing.md },
   sectionHeader: {
     borderTopWidth: 1,
@@ -344,6 +527,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
+  errorCard: {
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    backgroundColor: '#fff',
+  },
+  epcWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: spacing.sm,
+  },
+  epcChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    backgroundColor: '#F3F4F6',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+  },
+  epcText: { color: colors.text, fontSize: 12, fontFamily: 'monospace' },
   indexBubble: {
     width: 28,
     height: 28,

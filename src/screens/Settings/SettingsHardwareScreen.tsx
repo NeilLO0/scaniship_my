@@ -12,7 +12,7 @@ type Props = { onBack: () => void };
 export default function SettingsHardwareScreen({ onBack }: Props) {
   const [power, setPower] = useState(75);
   const [appliedDbm, setAppliedDbm] = useState<number | null>(null);
-  const quick = [33, 50, 66, 100];
+  const quick = [33, 66, 80, 100];
 
   const percentToDbm = (pct: number) => Math.max(5, Math.min(33, Math.round((pct / 100) * 33)));
 

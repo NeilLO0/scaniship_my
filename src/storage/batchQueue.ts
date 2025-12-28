@@ -107,6 +107,17 @@ export async function getQueueCount(): Promise<number> {
   return queue.length;
 }
 
+export async function getQueueCountFor(account: string, mode: 'IN' | 'OUT'): Promise<number> {
+  const queue = await readQueue();
+  return queue.filter((item) => item.ownerAccount === account && item.mode === mode).length;
+}
+
+export async function clearQueueForMode(account: string, mode: 'IN' | 'OUT') {
+  const queue = await readQueue();
+  const next = queue.filter((item) => item.ownerAccount !== account || item.mode !== mode);
+  await writeQueue(next);
+}
+
 export async function clearQueue() {
   await AsyncStorage.removeItem(STORAGE_KEY);
 }

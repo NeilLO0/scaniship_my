@@ -16,7 +16,7 @@ const hexToAscii = (hex: string) => {
 export function convertEpcToPackage(epc: string): string {
   const normalized = epc.replace(/\s+/g, '').toUpperCase();
   if (normalized.length !== 24 || !HEX_REGEX.test(normalized)) {
-    throw new Error('EPC 格式錯誤，請確認 24 碼十六進制');
+    throw new Error('EPC 長度或格式錯誤，已記錄為無效標籤');
   }
 
   let hex = normalized;
@@ -31,7 +31,7 @@ export function convertEpcToPackage(epc: string): string {
 
   const filtered = ascii.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
   if (!PACKAGE_REGEX.test(filtered)) {
-    throw new Error('EPC 轉碼長度異常');
+    throw new Error('EPC 轉碼內容不符合包裝編號，已記錄為無效標籤');
   }
   return filtered;
 }

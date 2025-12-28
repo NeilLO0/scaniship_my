@@ -19,7 +19,7 @@ const CREDENTIALS: Record<ApiEnvironment, ApiCredential> = {
   },
 };
 
-const ACTIVE_ENV: ApiEnvironment = 'staging';
+const ACTIVE_ENV: ApiEnvironment = 'production';
 export const apiConfig = CREDENTIALS[ACTIVE_ENV];
 
 export const endpoints = {
