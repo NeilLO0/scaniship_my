@@ -1,0 +1,119 @@
+API
+header, params
+!
+sI
+;
+x	@
+x	@
+aXE
+!
+rix	@
+!
+sI
+;ri
+s°sI
+osI
+yÂb"
+API
+RFID APP
+-
+"
+RF100
+-sH
+RF200
+RF300
+response
+example situation
+CRUD Success
+API Secret
+API
+sI
+;
+kY~
+sMiÄ
+sI
+;
+kY~
+sMiÄ
+200
+401
+rbW	X
+R6w2rP
+404
+422
+Description
+Method & URL
+Header
+Method
+ENV
+key
+value
+description
+content-type
+application/json
+X-Timestamp
+X-API-Key
+X-Signature
+HMAC-SHA256(timestamp
++ method + payload ,
+For
+JSON
+param
+name
+type
+description / e.g.
+Body
+URL
++osMiÄ
+)
+mat
+no
+e.g.
+Response
+Description
+Method & URL
+Method
+ENV
+URL
+Header
+Param
+Response
+key
+value
+description
+content-type
+application/json
+Authorization
+Bearer token
+For
+JSON
+param
+name
+type
+description / e.g.
+mat
+no
+Description
+Method & URL
+Header
+Method
+ENV
+key
+value
+description
+content-type
+application/json
+Authorization
+Bearer token
+For
+JSON
+param
+name
+type
+description / e.g.
+Body
+URL
+mat
+no
+e.g.
+Response

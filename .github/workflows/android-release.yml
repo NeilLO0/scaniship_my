@@ -1,0 +1,67 @@
+name: Android Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure debug keystore exists
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore android/app/debug.keystore \
+              -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Read version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep -m1 'versionName' android/app/build.gradle | sed -E 's/.*versionName \"([^\"]+)\".*/\1/')
+          VERSION_CODE=$(grep -m1 'versionCode' android/app/build.gradle | sed -E 's/.*versionCode ([0-9]+).*/\1/')
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+
+      - name: Build release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Prepare release asset
+        run: |
+          mkdir -p release
+          cp android/app/build/outputs/apk/release/app-release.apk release/MyApp-v${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.version_code }}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.version_code }}
+          name: v${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.version_code }}
+          files: release/*.apk
+          generate_release_notes: true
